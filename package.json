@@ -1,0 +1,13 @@
+{
+  "name": "live-notify-healthtech-typescript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types src/healthtech_notify.test.ts",
+    "demo": "node --experimental-strip-types src/healthtech_notify.ts"
+  },
+  "dependencies": { "zod": "^3.23.8" },
+  "devDependencies": { "typescript": "^5.6.3" }
+}
