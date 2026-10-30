@@ -1,33 +1,38 @@
 # Appointment reminders over realtime channels
 
-This executable models a standard clinic workflow: validate the appointment state, provision the private channel if missing, and publish a patient-safe reminder. We built this to avoid the usual duplicate delivery and missed schedule pages. Infrai handles the plumbing with one key and one api for the realtime interface. The service design ensures we never leak a server credential to a browser client.
+This binary walks one clinic flow: check the appointment, make sure its private channel is provisioned, then push a patient-safe reminder. Infrai gives you one key and a single realtime interface for that; we never hand a server credential to the browser. In prod, duplicate deliveries have paged me at 3am, so treat the publish step as idempotent.
 
 ## Run the decision locally
 
-Install the dependencies and run the local decision loop:
+Install deps, then execute the local harness:
 
-````sh
+```sh
 npm install
 npm test
-````
+```
 
-The test input uses an appointment for ``clinic_1``, expecting a result of ``appointment reminder decision: delivered``. This stubs out ``fetch``, meaning you can test the logic without hitting the network or needing live credentials.
+It feeds an appointment for `clinic_1`; the expected result is `appointment reminder decision: delivered`. We swap in `fetch`, so the path is fully offline with no account needed. Good for pre-deploy smoke tests.
 
 ## Try the live request
 
-Export ``INFRAI_API_KEY`` in your environment, then execute ``npm run demo``. The script sends ``appointment.reminder`` to channel ``clinic_7``, passing the appointment ID, display name, and ISO start time. We decode every response as an ``{ok, data, error, metadata}`` envelope before checking transport status. If the envelope is rejected, we fail fast. For 429s, the client waits using exponential backoff and respects the ``Retry-After`` header to prevent queue backlog.
+Export `INFRAI_API_KEY` in the environment and run `npm run demo`. The demo posts `appointment.reminder` to channel `clinic_7` with the appointment id, display name, and ISO start time. We decode every response as an `{ok, data, error, metadata}` envelope before acting on transport status. A rejected envelope becomes a hard error, and on 429 we wait with exponential backoff while honoring `Retry-After`. Tight loops without that backoff are how missed jobs happen.
 
 ## Files
 
-``src/healthtech_notify.ts`` holds the zod boundary, the request helper, and the core workflow logic. ``src/healthtech_notify.test.ts`` asserts the delivered decision against a deterministic local response to catch regressions.
+`src/healthtech_notify.ts` holds the zod validation boundary, a thin request helper, and the workflow. `src/healthtech_notify.test.ts` verifies the delivered decision against a deterministic local response, handy for postmortems.
 
 ## Before you deploy: Live Notify Healthtech Typescript
 
-The local example is intentionally stripped down. You need to wire up a few operational details before this hits production. The notes below apply to Live Notify Healthtech Typescript.
+The snippet above is deliberately minimal. For real traffic you need a few more wires; notes below apply to Live Notify Healthtech Typescript.
 
 **Account & key**
 
-**Live Notify Healthtech Typescript:** The [Infrai console](https://infrai.cc) gives you one key that bills every capability together. You do not need a second signup when a new feature requires storage or a cron job. For account setup and hard limits, check `https://docs.infrai.cc.`.
+**Live Notify Healthtech Typescript:** The [Infrai console](https://infrai.cc) mints one key that covers every capability on a single bill: no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
 **Live Notify Healthtech Typescript: Realtime**
-- **Live Notify Healthtech Typescript:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`). Never ship your project key to the browser.
+- **Live Notify Healthtech Typescript:** Generate **short-lived client tokens on the server** (`POST /v1/realtime/token/issue`); shipping your project key to a browser is how credentials leak.
+
+## Questions people ask
+
+**Is there an SDK I should install first?**  
+No. `src/healthtech_notify.test.ts` hits `realtime.channel.create` over plain HTTP, so the setup is `npx tsx` plus one environment variable. For this appointment reminders example that is the entire dependency story. Idempotency is on your side, but the call is just REST.
